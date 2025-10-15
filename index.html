@@ -23,7 +23,7 @@
     .item { background:#fff; border:1px solid var(--line); border-radius:16px; padding:10px; display:flex; flex-direction:column; align-items:center; gap:8px; transition: transform .12s ease, box-shadow .12s ease; }
     .item:hover { transform: translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.06); }
     .item.selected { outline: 3px solid rgba(99,102,241,.35); }
-    .pic { width:112px; height:112px; border-radius:14px; background:linear-gradient(135deg,#fff 0%,#fef6ff 100%); display:grid; place-items:center; position:relative; overflow:hidden; }
+    .pic { width:112px; height:112px; border-radius:14px; background:linear-gradient(135deg,#fff 0%,#fef6ff 100%); display:grid; place-items:center; overflow:hidden; }
     .price { font-size:14px; }
     .foot { border-top:1px dashed var(--line); padding-top:10px; margin-top:10px; }
     ul { margin:8px 0 0 18px; padding:0; }
@@ -35,6 +35,10 @@
   </style>
 </head>
 <body>
+  <noscript style="display:block; padding:12px; background:#fff3cd; border:1px solid #ffeeba; margin:12px">
+    Selle mängu jaoks peab JavaScript sisse lülitatud olema.
+  </noscript>
+
   <div class="wrap">
     <h1>Euro-mäng: osta kaisukaid 🧸</h1>
     <p class="muted">Vajuta “Anna €5” või “Anna €10”, loe koos lapsega paberraha ja sentide kaupa ning vali, millised kaisukad ta saab osta.</p>
@@ -113,7 +117,6 @@
       { value: 1,     label: "1¢"   },
     ];
 
-    // Nunnud kaisukad (hinnad senti)
     const PLUSHIES = [
       { id: 1, name: "Pehme Karu",     priceCents: 250, svg: "bear"    },
       { id: 2, name: "Väike Jänku",    priceCents: 150, svg: "bunny"   },
@@ -124,51 +127,37 @@
     // ---- Helid ----
     let audioCtx = null;
     const soundEnabled = () => document.getElementById("soundOn").checked;
-
-    function ensureCtx(){
-      if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
+    function ensureCtx(){ if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
     function tone(freq=800, ms=120, type='sine', gain=0.02){
       if(!soundEnabled()) return;
       ensureCtx();
       const osc = audioCtx.createOscillator();
       const g = audioCtx.createGain();
-      osc.type = type;
-      osc.frequency.value = freq;
-      g.gain.value = gain;
+      osc.type = type; osc.frequency.value = freq; g.gain.value = gain;
       osc.connect(g); g.connect(audioCtx.destination);
-      osc.start();
-      setTimeout(()=>{ osc.stop(); }, ms);
+      osc.start(); setTimeout(()=>osc.stop(), ms);
     }
     function coinDing(){ tone(1200,90,'triangle',0.03); setTimeout(()=>tone(1600,90,'triangle',0.02), 70); }
     function successJingle(){ tone(900,120,'sine',0.03); setTimeout(()=>tone(1200,160,'sine',0.03),120); setTimeout(()=>tone(1500,200,'sine',0.03),280); }
     function softNope(){ tone(220,180,'sawtooth',0.015); setTimeout(()=>tone(180,220,'sawtooth',0.012),140); }
-
-    // Kõnesüntees (vaikimisi eesti häält pole alati, aga tekst loetakse arusaadavalt)
     function say(txt){
       if(!soundEnabled()) return;
-      try {
-        const u = new SpeechSynthesisUtterance(txt);
-        u.rate = 1; u.pitch = 1.05; u.lang = 'et-EE'; // fallback inglise häälele, kui EE puudub
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
-      } catch(e) { /* ignore */ }
+      try { const u = new SpeechSynthesisUtterance(txt); u.rate=1; u.pitch=1.05; u.lang='et-EE'; speechSynthesis.cancel(); speechSynthesis.speak(u);} catch(e){}
     }
 
-    // ---- Abifunktsioonid ----
-    const € = (c) => "€" + (c/100).toFixed(2);
+    // ---- Abifunktsioonid (turvaline nimega) ----
+    function formatEuro(c){ return "€" + (c/100).toFixed(2); }
 
     function greedyBreakdown(totalCents, coinsOnly=false){
       const units = coinsOnly ? BANKNOTES_COINS.filter(u => u.value < 500) : BANKNOTES_COINS;
       let r = totalCents, out = [];
       for(const u of units){
         const count = Math.floor(r / u.value);
-        if(count > 0){ out.push({label:u.label, count}); r -= count*u.value; }
+        if (count > 0){ out.push({label:u.label, count}); r -= count*u.value; }
       }
       return out;
     }
 
-    // SVG “pildid” – cutesy versioonid
     function svg(kind){
       const common = 'width="100" height="100" viewBox="0 0 120 120"';
       if(kind==="bear") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
@@ -180,8 +169,6 @@
           <circle cx="50" cy="60" r="4" fill="#3B2F2F"/>
           <circle cx="70" cy="60" r="4" fill="#3B2F2F"/>
           <path d="M50 74c8 6 12 6 20 0" stroke="#3B2F2F" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="20" cy="18" r="3" fill="#ff8ab3"/><circle cx="100" cy="18" r="3" fill="#ff8ab3"/>
-          <circle cx="14" cy="100" r="3" fill="#ffd7e8"/><circle cx="108" cy="96" r="4" fill="#ffd7e8"/>
         </g></svg>`;
       if(kind==="bunny") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
         <rect width="120" height="120" rx="16" fill="#f6f8ff"/>
@@ -192,7 +179,6 @@
           <circle cx="52" cy="66" r="4" fill="#2B2B2B"/>
           <circle cx="68" cy="66" r="4" fill="#2B2B2B"/>
           <path d="M56 78c4 4 8 4 12 0" stroke="#2B2B2B" stroke-width="2" stroke-linecap="round"/>
-          <circle cx="16" cy="18" r="3" fill="#c7d2fe"/><circle cx="104" cy="100" r="4" fill="#c7d2fe"/>
         </g></svg>`;
       if(kind==="dragon") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
         <rect width="120" height="120" rx="16" fill="#eafffb"/>
@@ -202,7 +188,6 @@
           <circle cx="72" cy="62" r="5" fill="#0b3b2a"/>
           <path d="M40 84c10 6 28 6 40 0" stroke="#0b3b2a" stroke-width="2" stroke-linecap="round"/>
           <path d="M20 60c8-12 18-18 26-20" stroke="#8be6b2" stroke-width="5" stroke-linecap="round"/>
-          <circle cx="14" cy="22" r="3" fill="#b3f1cf"/><circle cx="106" cy="98" r="4" fill="#b3f1cf"/>
         </g></svg>`;
       if(kind==="unicorn") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
         <rect width="120" height="120" rx="16" fill="#fff2ff"/>
@@ -212,14 +197,13 @@
           <path d="M46 42c6-12 26-22 36 2" stroke="#ffd1e6" stroke-width="6" stroke-linecap="round"/>
           <circle cx="52" cy="68" r="4" fill="#3B2F2F"/>
           <circle cx="72" cy="68" r="4" fill="#3B2F2F"/>
-          <circle cx="18" cy="18" r="3" fill="#ffd1e6"/><circle cx="104" cy="96" r="4" fill="#ffd1e6"/>
         </g></svg>`;
       return "";
     }
 
     // ---- Seis ----
-    let wallet = 0;           // cents
-    let selected = new Set(); // ids
+    let wallet = 0;
+    let selected = new Set();
 
     // ---- DOM ----
     const $wallet = document.getElementById("wallet");
@@ -231,7 +215,6 @@
     const $shop = document.getElementById("shop");
     const $coinsOnly = document.getElementById("coinsOnly");
 
-    // Pood
     function renderShop(){
       $shop.innerHTML = "";
       PLUSHIES.forEach(p => {
@@ -240,7 +223,7 @@
         el.innerHTML = `
           <div class="pic">${svg(p.svg)}</div>
           <div style="font-weight:600">${p.name}</div>
-          <div class="price">${€(p.priceCents)}</div>
+          <div class="price">${formatEuro(p.priceCents)}</div>
         `;
         el.setAttribute("aria-pressed", selected.has(p.id) ? "true" : "false");
         if(selected.has(p.id)) el.classList.add("selected");
@@ -263,31 +246,25 @@
     function renderTotals(){
       const sel = Array.from(selected).map(id => PLUSHIES.find(p => p.id===id));
       const selSum = sel.reduce((a,p) => a + (p ? p.priceCents : 0), 0);
-      $selTotal.textContent = €(selSum);
+      $selTotal.textContent = formatEuro(selSum);
 
       const can = wallet >= selSum;
       $afford.textContent = can ? "Jah" : "Ei";
       $afford.className = can ? "state-ok" : "state-bad";
 
       const ch = can ? (wallet - selSum) : 0;
-      $change.textContent = €(can ? ch : 0);
+      $change.textContent = formatEuro(can ? ch : 0);
       $changeBreakdown.innerHTML = can
         ? breakdownList(ch, $coinsOnly.checked)
         : "<li>Ei ole ostetud — vahetust ei arvutata.</li>";
 
-      // Helid/kõne vastavalt seisule
       if(selSum === 0) return;
-      if(can){
-        successJingle();
-        say(`Saad osta! Vahetus: ${(ch/100).toFixed(2)} eurot.`);
-      } else {
-        softNope();
-        say(`Veel ei jätku. Valitud on ${(selSum/100).toFixed(2)} eurot.`);
-      }
+      if(can){ successJingle(); say(`Saad osta! Vahetus: ${(ch/100).toFixed(2)} eurot.`); }
+      else { softNope(); say(`Veel ei jätku. Valitud on ${(selSum/100).toFixed(2)} eurot.`); }
     }
 
     function renderWallet(){
-      $wallet.textContent = €(wallet);
+      $wallet.textContent = formatEuro(wallet);
       if(wallet === 0){
         $walletBreakdown.innerHTML = '<li>Puudub raha — vajuta “Anna €5” või “Anna €10”.</li>';
       } else {
@@ -295,13 +272,9 @@
       }
     }
 
-    function renderAll(){
-      renderShop();
-      renderWallet();
-      renderTotals();
-    }
+    function renderAll(){ renderShop(); renderWallet(); renderTotals(); }
 
-    // ---- Nupud ----
+    // Nupud
     document.getElementById("give5").onclick  = () => { wallet = 500; selected.clear(); renderAll(); say("Sa said viis eurot."); coinDing(); };
     document.getElementById("give10").onclick = () => { wallet = 1000; selected.clear(); renderAll(); say("Sa said kümme eurot."); coinDing(); };
     document.getElementById("clear").onclick  = () => { wallet = 0; selected.clear(); renderAll(); say("Tühjendasime rahakoti."); };
