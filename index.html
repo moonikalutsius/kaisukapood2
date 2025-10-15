@@ -20,8 +20,10 @@
     .muted { color:var(--muted); }
     .shop { display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:12px; }
     @media (min-width:700px){ .shop { grid-template-columns: repeat(4,minmax(0,1fr)); } }
-    .item { background:#fff; border:1px solid var(--line); border-radius:14px; padding:10px; display:flex; flex-direction:column; align-items:center; gap:6px; }
+    .item { background:#fff; border:1px solid var(--line); border-radius:16px; padding:10px; display:flex; flex-direction:column; align-items:center; gap:8px; transition: transform .12s ease, box-shadow .12s ease; }
+    .item:hover { transform: translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.06); }
     .item.selected { outline: 3px solid rgba(99,102,241,.35); }
+    .pic { width:112px; height:112px; border-radius:14px; background:linear-gradient(135deg,#fff 0%,#fef6ff 100%); display:grid; place-items:center; position:relative; overflow:hidden; }
     .price { font-size:14px; }
     .foot { border-top:1px dashed var(--line); padding-top:10px; margin-top:10px; }
     ul { margin:8px 0 0 18px; padding:0; }
@@ -29,6 +31,7 @@
     .state-bad { color:var(--bad); font-weight:700; }
     .toggle { display:inline-flex; gap:6px; align-items:center; }
     .toggle input { transform: scale(1.2); }
+    .chip { display:inline-flex; align-items:center; gap:8px; font-size:13px; padding:6px 10px; border:1px solid var(--line); background:#fff; border-radius:999px; }
   </style>
 </head>
 <body>
@@ -40,10 +43,11 @@
       <!-- Rahakott -->
       <section class="card">
         <h2 style="margin-top:0">Rahakott</h2>
-        <div style="margin:8px 0 12px">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 12px">
           <button class="btn" id="give5">Anna €5</button>
           <button class="btn alt" id="give10">Anna €10</button>
           <button class="btn ghost" id="clear">Tühjenda</button>
+          <label class="chip"><input type="checkbox" id="soundOn" checked> Helid & kõne</label>
         </div>
 
         <div>
@@ -109,7 +113,7 @@
       { value: 1,     label: "1¢"   },
     ];
 
-    // Armaste kaisukate hinnad (cents)
+    // Nunnud kaisukad (hinnad senti)
     const PLUSHIES = [
       { id: 1, name: "Pehme Karu",     priceCents: 250, svg: "bear"    },
       { id: 2, name: "Väike Jänku",    priceCents: 150, svg: "bunny"   },
@@ -117,61 +121,98 @@
       { id: 4, name: "Roosa Ükssarvik",priceCents: 550, svg: "unicorn" },
     ];
 
+    // ---- Helid ----
+    let audioCtx = null;
+    const soundEnabled = () => document.getElementById("soundOn").checked;
+
+    function ensureCtx(){
+      if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    function tone(freq=800, ms=120, type='sine', gain=0.02){
+      if(!soundEnabled()) return;
+      ensureCtx();
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      g.gain.value = gain;
+      osc.connect(g); g.connect(audioCtx.destination);
+      osc.start();
+      setTimeout(()=>{ osc.stop(); }, ms);
+    }
+    function coinDing(){ tone(1200,90,'triangle',0.03); setTimeout(()=>tone(1600,90,'triangle',0.02), 70); }
+    function successJingle(){ tone(900,120,'sine',0.03); setTimeout(()=>tone(1200,160,'sine',0.03),120); setTimeout(()=>tone(1500,200,'sine',0.03),280); }
+    function softNope(){ tone(220,180,'sawtooth',0.015); setTimeout(()=>tone(180,220,'sawtooth',0.012),140); }
+
+    // Kõnesüntees (vaikimisi eesti häält pole alati, aga tekst loetakse arusaadavalt)
+    function say(txt){
+      if(!soundEnabled()) return;
+      try {
+        const u = new SpeechSynthesisUtterance(txt);
+        u.rate = 1; u.pitch = 1.05; u.lang = 'et-EE'; // fallback inglise häälele, kui EE puudub
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+      } catch(e) { /* ignore */ }
+    }
+
     // ---- Abifunktsioonid ----
     const € = (c) => "€" + (c/100).toFixed(2);
 
     function greedyBreakdown(totalCents, coinsOnly=false){
-      const units = coinsOnly
-        ? BANKNOTES_COINS.filter(u => u.value < 500) // ainult mündid
-        : BANKNOTES_COINS;
+      const units = coinsOnly ? BANKNOTES_COINS.filter(u => u.value < 500) : BANKNOTES_COINS;
       let r = totalCents, out = [];
       for(const u of units){
         const count = Math.floor(r / u.value);
         if(count > 0){ out.push({label:u.label, count}); r -= count*u.value; }
       }
-      // kui valisid coinsOnly ja midagi jäi üle (nt 0.03€ ja väikseim ühik 1¢), r=0 alati
       return out;
     }
 
+    // SVG “pildid” – cutesy versioonid
     function svg(kind){
       const common = 'width="100" height="100" viewBox="0 0 120 120"';
       if(kind==="bear") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="0" width="120" height="120" rx="16" fill="#fff6f7"/>
         <g fill="none" fill-rule="evenodd">
-          <ellipse cx="60" cy="92" rx="36" ry="12" fill="#F4C2A1"/>
-          <circle cx="40" cy="40" r="22" fill="#F5A97F"/>
-          <circle cx="80" cy="40" r="22" fill="#F5A97F"/>
-          <circle cx="60" cy="56" r="26" fill="#F5C6A0"/>
-          <circle cx="52" cy="50" r="4" fill="#3B2F2F"/>
-          <circle cx="68" cy="50" r="4" fill="#3B2F2F"/>
-          <ellipse cx="60" cy="64" rx="8" ry="6" fill="#3B2F2F"/>
+          <circle cx="38" cy="38" r="18" fill="#f0b48f"/>
+          <circle cx="82" cy="38" r="18" fill="#f0b48f"/>
+          <ellipse cx="60" cy="66" rx="34" ry="28" fill="#f7c8a5"/>
+          <circle cx="50" cy="60" r="4" fill="#3B2F2F"/>
+          <circle cx="70" cy="60" r="4" fill="#3B2F2F"/>
+          <path d="M50 74c8 6 12 6 20 0" stroke="#3B2F2F" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="20" cy="18" r="3" fill="#ff8ab3"/><circle cx="100" cy="18" r="3" fill="#ff8ab3"/>
+          <circle cx="14" cy="100" r="3" fill="#ffd7e8"/><circle cx="108" cy="96" r="4" fill="#ffd7e8"/>
         </g></svg>`;
       if(kind==="bunny") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
+        <rect width="120" height="120" rx="16" fill="#f6f8ff"/>
         <g fill="none" fill-rule="evenodd">
-          <ellipse cx="60" cy="96" rx="40" ry="10" fill="#EDE7F6"/>
-          <ellipse cx="60" cy="56" rx="30" ry="28" fill="#FFF1F6"/>
-          <ellipse cx="42" cy="36" rx="8" ry="22" fill="#FFF1F6" transform="rotate(-25 42 36)"/>
-          <ellipse cx="78" cy="36" rx="8" ry="22" fill="#FFF1F6" transform="rotate(25 78 36)"/>
-          <circle cx="52" cy="56" r="4" fill="#2B2B2B"/>
-          <circle cx="68" cy="56" r="4" fill="#2B2B2B"/>
-          <path d="M56 70c4 4 8 4 12 0" stroke="#2B2B2B" stroke-width="2" stroke-linecap="round"/>
+          <ellipse cx="42" cy="30" rx="10" ry="26" fill="#fff2f7" transform="rotate(-18 42 30)"/>
+          <ellipse cx="78" cy="30" rx="10" ry="26" fill="#fff2f7" transform="rotate(18 78 30)"/>
+          <ellipse cx="60" cy="70" rx="34" ry="26" fill="#fff6fb"/>
+          <circle cx="52" cy="66" r="4" fill="#2B2B2B"/>
+          <circle cx="68" cy="66" r="4" fill="#2B2B2B"/>
+          <path d="M56 78c4 4 8 4 12 0" stroke="#2B2B2B" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="16" cy="18" r="3" fill="#c7d2fe"/><circle cx="104" cy="100" r="4" fill="#c7d2fe"/>
         </g></svg>`;
       if(kind==="dragon") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
+        <rect width="120" height="120" rx="16" fill="#eafffb"/>
         <g fill="none" fill-rule="evenodd">
-          <ellipse cx="60" cy="96" rx="36" ry="9" fill="#D0F0FF"/>
-          <ellipse cx="60" cy="60" rx="32" ry="26" fill="#C3F7D6"/>
-          <circle cx="44" cy="48" r="5" fill="#1F3B2E"/>
-          <circle cx="76" cy="48" r="5" fill="#1F3B2E"/>
-          <path d="M36 68c8 6 40 6 52 0" stroke="#1F3B2E" stroke-width="2" stroke-linecap="round"/>
-          <path d="M18 60c8-12 18-18 24-20" stroke="#9AE3B4" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="60" cy="72" rx="36" ry="24" fill="#bff7d6"/>
+          <circle cx="48" cy="62" r="5" fill="#0b3b2a"/>
+          <circle cx="72" cy="62" r="5" fill="#0b3b2a"/>
+          <path d="M40 84c10 6 28 6 40 0" stroke="#0b3b2a" stroke-width="2" stroke-linecap="round"/>
+          <path d="M20 60c8-12 18-18 26-20" stroke="#8be6b2" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="14" cy="22" r="3" fill="#b3f1cf"/><circle cx="106" cy="98" r="4" fill="#b3f1cf"/>
         </g></svg>`;
       if(kind==="unicorn") return `<svg ${common} xmlns="http://www.w3.org/2000/svg">
+        <rect width="120" height="120" rx="16" fill="#fff2ff"/>
         <g fill="none" fill-rule="evenodd">
-          <ellipse cx="60" cy="96" rx="36" ry="9" fill="#FFE8F0"/>
-          <ellipse cx="60" cy="58" rx="32" ry="28" fill="#FFF1FF"/>
-          <path d="M46 36c4-10 28-26 36 0" stroke="#FFD1E6" stroke-width="6" stroke-linecap="round"/>
-          <circle cx="48" cy="56" r="4" fill="#3B2F2F"/>
-          <circle cx="72" cy="56" r="4" fill="#3B2F2F"/>
-          <path d="M58 40l8-14" stroke="#FFB3D2" stroke-width="4" stroke-linecap="round"/>
+          <ellipse cx="60" cy="72" rx="36" ry="26" fill="#fff7ff"/>
+          <path d="M56 40l10-16" stroke="#ff9ec4" stroke-width="5" stroke-linecap="round"/>
+          <path d="M46 42c6-12 26-22 36 2" stroke="#ffd1e6" stroke-width="6" stroke-linecap="round"/>
+          <circle cx="52" cy="68" r="4" fill="#3B2F2F"/>
+          <circle cx="72" cy="68" r="4" fill="#3B2F2F"/>
+          <circle cx="18" cy="18" r="3" fill="#ffd1e6"/><circle cx="104" cy="96" r="4" fill="#ffd1e6"/>
         </g></svg>`;
       return "";
     }
@@ -197,8 +238,8 @@
         const el = document.createElement("button");
         el.className = "item";
         el.innerHTML = `
-          <div>${svg(p.svg)}</div>
-          <div>${p.name}</div>
+          <div class="pic">${svg(p.svg)}</div>
+          <div style="font-weight:600">${p.name}</div>
           <div class="price">${€(p.priceCents)}</div>
         `;
         el.setAttribute("aria-pressed", selected.has(p.id) ? "true" : "false");
@@ -206,6 +247,7 @@
         el.onclick = () => {
           if(selected.has(p.id)) selected.delete(p.id);
           else selected.add(p.id);
+          coinDing();
           renderAll();
         };
         $shop.appendChild(el);
@@ -232,6 +274,16 @@
       $changeBreakdown.innerHTML = can
         ? breakdownList(ch, $coinsOnly.checked)
         : "<li>Ei ole ostetud — vahetust ei arvutata.</li>";
+
+      // Helid/kõne vastavalt seisule
+      if(selSum === 0) return;
+      if(can){
+        successJingle();
+        say(`Saad osta! Vahetus: ${(ch/100).toFixed(2)} eurot.`);
+      } else {
+        softNope();
+        say(`Veel ei jätku. Valitud on ${(selSum/100).toFixed(2)} eurot.`);
+      }
     }
 
     function renderWallet(){
@@ -250,9 +302,9 @@
     }
 
     // ---- Nupud ----
-    document.getElementById("give5").onclick  = () => { wallet = 500; selected.clear(); renderAll(); };
-    document.getElementById("give10").onclick = () => { wallet = 1000; selected.clear(); renderAll(); };
-    document.getElementById("clear").onclick  = () => { wallet = 0; selected.clear(); renderAll(); };
+    document.getElementById("give5").onclick  = () => { wallet = 500; selected.clear(); renderAll(); say("Sa said viis eurot."); coinDing(); };
+    document.getElementById("give10").onclick = () => { wallet = 1000; selected.clear(); renderAll(); say("Sa said kümme eurot."); coinDing(); };
+    document.getElementById("clear").onclick  = () => { wallet = 0; selected.clear(); renderAll(); say("Tühjendasime rahakoti."); };
     $coinsOnly.onchange = () => { renderWallet(); renderTotals(); };
 
     // start
